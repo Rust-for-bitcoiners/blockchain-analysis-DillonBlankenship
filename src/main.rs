@@ -1,5 +1,4 @@
 use std::{env, time};
-
 use bitcoincore_rpc::{json, jsonrpc::{self}, Auth, Client, RpcApi};
 use chrono::Duration;
 #[macro_use]
@@ -16,33 +15,32 @@ lazy_static! {
     };
 }
 
-// static client: Client = Client::new("url", Auth::UserPass("user".to_owned(), "password".to_owned())).unwrap();
-
-// TODO: Task 1
-fn time_to_mine(block_height: u64) -> Duration {
-    // * is a deref operator which invokes the Deref trait of the type RPC_CLIENT which was created
-    // when the lazy macro is expanded
-    // if a value has a static lifetime then it means that value lives as long as the program lives
+fn time_to_mine(block_height: u64) -> Result<Duration, Box<dyn std::error::Error>> {
     let rpc_client: &Client = &*RPC_CLIENT;
-    rpc_client.get_block_hash(234);
-    todo!()
+    let block_hash = rpc_client.get_block_hash(block_height)?;
+    let block = rpc_client.get_block(&block_hash)?;
+    let prev_block_hash = block.header.prev_blockhash;
+    let prev_block = rpc_client.get_block(&prev_block_hash)?;
+    
+    let time_diff = block.header.time - prev_block.header.time;
+    Ok(Duration::seconds(time_diff as i64))
 }
 
-// TODO: Task 2
-fn number_of_transactions(block_height: u64) -> u16 {
-    let some_value = Box::new(4 as u32);
-    todo!()
+fn number_of_transactions(block_height: u64) -> Result<u16, Box<dyn std::error::Error>> {
+    let rpc_client: &Client = &*RPC_CLIENT;
+    let block_hash = rpc_client.get_block_hash(block_height)?;
+    let block = rpc_client.get_block(&block_hash)?;
+    
+    Ok(block.txdata.len() as u16)
 }
 
-fn main() {
-    // you can use rpc_client here as if it was a global variable
-    // println!("{:?}", res);
+fn main() -> Result<(), Box<dyn std::error::Error>> {
     const TIMEOUT_UTXO_SET_SCANS: time::Duration = time::Duration::from_secs(60 * 8); // 8 minutes
     dotenv::dotenv().ok();
-        let rpc_url: String = env::var("BITCOIN_RPC_URL").expect("BITCOIN_RPC_URL must be set");
-        let rpc_user: String = env::var("BITCOIN_RPC_USER").expect("BITCOIN_RPC_USER must be set");
-        let rpc_password: String =
-            env::var("BITCOIN_RPC_PASSWORD").expect("BITCOIN_RPC_PASSWORD must be set");
+    let rpc_url: String = env::var("BITCOIN_RPC_URL").expect("BITCOIN_RPC_URL must be set");
+    let rpc_user: String = env::var("BITCOIN_RPC_USER").expect("BITCOIN_RPC_USER must be set");
+    let rpc_password: String =
+        env::var("BITCOIN_RPC_PASSWORD").expect("BITCOIN_RPC_PASSWORD must be set");
 
     let custom_timeout_transport = jsonrpc::simple_http::Builder::new()
         .url(&rpc_url)
@@ -55,6 +53,19 @@ fn main() {
 
     let rpc_client = Client::from_jsonrpc(custom_timeout_rpc_client);
     let res: json::GetTxOutSetInfoResult =
-        rpc_client.get_tx_out_set_info(None, None, None).unwrap();
+        rpc_client.get_tx_out_set_info(None, None, None)?;
     println!("{:?}", res);
+
+    // Query the latest block height
+    let latest_block_height = rpc_client.get_block_count()?;
+    println!("Latest block height: {}", latest_block_height);
+
+    // Example usage of the implemented functions with the latest block height
+    let time_diff = time_to_mine(latest_block_height)?;
+    println!("Time to mine block {}: {:?}", latest_block_height, time_diff);
+
+    let num_tx = number_of_transactions(latest_block_height)?;
+    println!("Number of transactions in block {}: {}", latest_block_height, num_tx);
+
+    Ok(())
 }
